@@ -1,14 +1,25 @@
 import Post from '../../models/post';
 import mongoose from 'mongoose';
-import Joi from '../../../node_modules/joi/lib/index';
+import joi from '../../../node_modules/joi/lib/index';
 
 const { ObjectId } = mongoose.Types;
 
-export const checkObjectId = (ctx, next) => {
+export const getPostById = async (ctx, next) => {
   const { id } = ctx.params;
   if (!ObjectId.isValid(id)) {
     ctx.status = 400; // Bad Request
     return;
+  }
+  try {
+    const post = await Post.findById(id);
+    if (!post) {
+      ctx.status = 404;
+      return;
+    }
+    ctx.state.post = post;
+    return next();
+  } catch (e) {
+    ctx.throw(500, e);
   }
   return next();
 };
@@ -22,11 +33,12 @@ export const checkObjectId = (ctx, next) => {
   }
 */
 export const write = async (ctx) => {
-  const schema = Joi.object().keys({
+  const schema = schema.object().keys({
+    // schema <- joi 변경
     // 객체가 다음 필드를 갖고 있음을 검증
-    title: Joi.string().required(),
-    body: Joi.string().required(),
-    tags: Joi.array().items(Joi.string()).required(), // 문자열로 이뤄진 배열
+    title: schema.string().required(), // schema <- joi 변경
+    body: schema.string().required(), // schema <- joi 변경
+    tags: schema.array().items(joi.string()).required(), // 문자열로 이뤄진 배열, // schema <- joi 변경
   });
 
   // 검증 실패인 경우 에러처리
@@ -42,6 +54,7 @@ export const write = async (ctx) => {
     title,
     body,
     tags,
+    user: ctx.state.user,
   });
   try {
     await post.save();
@@ -61,15 +74,21 @@ export const list = async (ctx) => {
     ctx.status = 400;
     return;
   }
+  const { tag, username } = ctx.query;
+  // tag, username 값이 유효하면 객체 안에 넣고, 그렇지 않으면 넣지 않음
+  const query = {
+    ...(username ? { 'user.username': username } : {}), // ...joi에서 joi 삭제
+    ...(tag ? { tags: tag } : {}),
+  };
 
   try {
-    const posts = await Post.find()
+    const posts = await Post.find(query)
       .sort({ _id: -1 })
       .limit(10)
       .skip((page - 1) * 10)
       .lean()
       .exec();
-    const postCount = await Post.countDocuments().exec();
+    const postCount = await Post.countDocuments(query).exec();
     ctx.set('Last-Page', Math.ceil(postCount / 10));
     ctx.body = posts.map((post) => ({
       ...post,
@@ -85,18 +104,8 @@ export const list = async (ctx) => {
 /*
   GET /api/posts/:id
 */
-export const read = async (ctx) => {
-  const { id } = ctx.params;
-  try {
-    const post = await Post.findById(id).exec();
-    if (!post) {
-      ctx.status = 404; // Not Found
-      return;
-    }
-    ctx.body = post;
-  } catch (e) {
-    ctx.throw(500, e);
-  }
+export const read = (ctx) => {
+  ctx.body = ctx.state.post;
 };
 
 /*
@@ -122,10 +131,10 @@ export const remove = async (ctx) => {
 */
 export const update = async (ctx) => {
   const { id } = ctx.params;
-  const schema = Joi.object().keys({
-    title: Joi.string(),
-    body: Joi.string(),
-    tags: Joi.array().items(Joi.string()),
+  const schema = joi.object().keys({
+    title: joi.string(),
+    body: joi.string(),
+    tags: joi.array().items(joi.string()),
   });
 
   // 검증 실패 시 에러 처리
@@ -150,6 +159,15 @@ export const update = async (ctx) => {
   } catch (e) {
     ctx.throw(500, e);
   }
+};
+
+export const checkOwnPost = (ctx, next) => {
+  const { user, post } = ctx.state;
+  if (post.user._id.toString() !== user._id) {
+    ctx.status = 403;
+    return;
+  }
+  return next();
 };
 
 // let postId = 1; // id default

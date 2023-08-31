@@ -1,4 +1,4 @@
-import Joi from '../../../node_modules/joi/lib/index';
+import joi from '../../../node_modules/joi/lib/index';
 import User from '../../models/user';
 
 /*
@@ -10,9 +10,10 @@ import User from '../../models/user';
 */
 export const register = async (ctx) => {
   // 회원가입
-  const schema = Joi.object().keys({
-    username: Joi.string().alphanum().min(3).max(20).required(),
-    password: Joi.string().required(),
+  const schema = schema.object().keys({
+    // schema <- joi 변경
+    username: schema.string().alphanum().min(3).max(20).required(), // schema <- joi 변경
+    password: schema.string().required(), // schema <- joi 변경
   });
   const result = schema.validate(ctx.request.body);
   if (result.error) {
